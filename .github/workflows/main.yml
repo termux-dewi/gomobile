@@ -1,18 +1,16 @@
 name: Build WG Engine
-
 on: [push]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23' # Menggunakan 1.23 yang stabil untuk gomobile
+          go-version: '1.23' # Versi stabil untuk gomobile
           cache: false
 
       - name: Setup Android SDK
@@ -22,27 +20,30 @@ jobs:
         run: |
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
-          
-          export PATH=$(go env GOPATH)/bin:$PATH
           gomobile init
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
-      - name: Prepare Dependencies
+      - name: Sync Dependencies & Vendor
         run: |
-          # Hapus go.mod lama dan buat baru
+          # Hapus go.mod lama jika ada
           rm -f go.mod go.sum
-          go mod init main 
           
-          # Ambil dependensi untuk Wireguard dan Mobile Bind
+          # Inisialisasi modul di root
+          go mod init main
+          
+          # Tarik library yang Anda gunakan di engine.go
           go get golang.zx2c4.com/wireguard@latest
           go get golang.org/x/mobile/bind@latest
           
+          # Masukkan semua library ke folder 'vendor'
+          # Ini adalah solusi mutlak untuk error 'unable to import bind'
           go mod tidy
+          go mod vendor
 
       - name: Build AAR
         run: |
-          export PATH=$(go env GOPATH)/bin:$PATH
-          
-          # PENTING: Target build adalah folder ./wgengine
+          # Gunakan path folder ./wgengine
+          # Tambahkan flag -v untuk melihat proses kompilasi Java
           gomobile bind -v \
             -target=android \
             -androidapi 21 \
@@ -51,5 +52,5 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wgengine
+          name: wgengine-aar
           path: wgengine.aar
