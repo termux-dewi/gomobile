@@ -1,41 +1,33 @@
 name: Build WG Engine
 
-on:
-  push:
+on: [push]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-          cache: false
 
-      - name: Setup Android SDK (Required by gomobile)
-        uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v3
 
-      - name: Install Gomobile Tools
+      - name: Install gomobile
         run: |
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           
           export PATH=$(go env GOPATH)/bin:$PATH
-          
           gomobile init
 
       - name: Prepare Dependencies
         run: |
-          # PENTING: jangan hapus go.mod
-          go mod tidy
-
-          # Pastikan mobile module ada
+          go clean -modcache
           go get golang.org/x/mobile@latest
+          go get golang.zx2c4.com/wireguard@latest
           go mod tidy
 
       - name: Build AAR
@@ -43,13 +35,11 @@ jobs:
           export PATH=$(go env GOPATH)/bin:$PATH
 
           gomobile bind \
-            -v \
-            -target=android/arm,android/arm64 \
+            -target=android \
             -androidapi 21 \
             -o wgengine.aar .
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: wgengine-library
+          name: wgengine
           path: wgengine.aar
