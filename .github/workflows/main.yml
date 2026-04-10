@@ -1,9 +1,12 @@
 name: Build WG Engine
-on: [push]
+
+on:
+  push:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -11,37 +14,39 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22' # Versi paling stabil untuk gomobile saat ini
+          go-version: '1.22'
           cache: false
+
+      - name: Setup Android SDK (Required by gomobile)
+        uses: android-actions/setup-android@v3
 
       - name: Install Gomobile Tools
         run: |
-          # Install tools secara eksplisit
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
+          
+          export PATH=$(go env GOPATH)/bin:$PATH
+          
           gomobile init
-          # Tambahkan binary ke path sistem agar dikenali
-          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
-      - name: Prepare Module & Vendor
+      - name: Prepare Dependencies
         run: |
-          # Bersihkan sisa build lama
-          rm -f go.mod go.sum
-          go mod init wgengine
-          
-          # Ambil dependency secara manual
-          go get golang.org/x/mobile/bind
-          go get golang.zx2c4.com/wireguard
-          
-          # Langkah KRUSIAL: Gunakan vendor agar gomobile tidak mencari online
+          # PENTING: jangan hapus go.mod
           go mod tidy
-          go mod vendor
+
+          # Pastikan mobile module ada
+          go get golang.org/x/mobile@latest
+          go mod tidy
 
       - name: Build AAR
         run: |
-          # Gunakan flag -mod=vendor untuk memaksa pembacaan file lokal
-          # Target arm untuk Redmi 10A dan arm64 untuk HP modern
-          gomobile bind -v -target=android/arm,android/arm64 -androidapi 21 -o wgengine.aar .
+          export PATH=$(go env GOPATH)/bin:$PATH
+
+          gomobile bind \
+            -v \
+            -target=android/arm,android/arm64 \
+            -androidapi 21 \
+            -o wgengine.aar .
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
