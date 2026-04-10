@@ -11,28 +11,25 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.23' # Update ke versi terbaru untuk mendukung library x/mobile
+          cache: true
 
-      - name: Setup Environment & Tools
+      - name: Install Gomobile Tools
         run: |
-          # Install tools ke path yang benar
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           gomobile init
-          
-          # Tambahkan binary ke PATH
-          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
-      - name: Build with GOPATH Mode
+      - name: Fetch Dependencies
         run: |
-          # Matikan mode module agar gomobile tidak bingung mencari go.mod
-          export GO111MODULE=off
-          
-          # Download package ke GOPATH secara manual
-          go get -d golang.org/x/mobile/bind
-          go get -d golang.zx2c4.com/wireguard
-          
-          # Jalankan bind
+          go mod tidy
+          go mod download
+
+      - name: Build AAR
+        run: |
+          # Tambahkan binary go ke PATH
+          export PATH=$PATH:$(go env GOPATH)/bin
+          # Build target arm & arm64
           gomobile bind -v -target=android/arm,android/arm64 -androidapi 21 -o wgengine.aar .
 
       - name: Upload Artifact
