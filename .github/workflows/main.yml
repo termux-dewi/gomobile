@@ -12,7 +12,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25' # Harus 1.25 untuk mendukung fitur 'iter'
+          go-version: '1.25'
           cache: false
 
       - name: Setup Android SDK
@@ -28,31 +28,28 @@ jobs:
 
       - name: Prepare Workspace & Vendor
         run: |
-          # Bersihkan total file lama agar tidak bentrok versi
           rm -f go.mod go.sum
-          
           go mod init wgengine
           
           # Ambil library terbaru
           go get golang.zx2c4.com/wireguard@latest
           go get golang.org/x/mobile/bind@latest
           
-          # Trik Utama: Download source ke folder vendor
           go mod tidy
+          # Membuat folder vendor secara lokal
           go mod vendor
-          
-          # Tambahan: Pastikan folder bind benar-benar ada di vendor
-          ls -d vendor/golang.org/x/mobile/bind || echo "Warning: Bind not in vendor"
 
       - name: Build AAR
         run: |
           export PATH=$(go env GOPATH)/bin:$PATH
           
-          # Gunakan -mod=vendor agar tidak mencari ke cache global yang sering error
+          # TRICK: Gunakan GOFLAGS untuk memaksa mode vendor di dalam gomobile
+          export GOFLAGS="-mod=vendor"
+          
+          # Hapus flag -mod dari perintah gomobile bind
           gomobile bind -v \
             -target=android \
             -androidapi 21 \
-            -mod=vendor \
             -o wgengine.aar .
 
       - name: Upload Artifact
