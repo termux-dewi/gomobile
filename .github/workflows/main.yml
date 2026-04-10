@@ -12,7 +12,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.23' # Menggunakan 1.23 yang stabil untuk gomobile
           cache: false
 
       - name: Setup Android SDK
@@ -26,13 +26,13 @@ jobs:
           export PATH=$(go env GOPATH)/bin:$PATH
           gomobile init
 
-      - name: Prepare Workspace
+      - name: Prepare Dependencies
         run: |
-          # Hapus file lama dan inisialisasi ulang
+          # Hapus go.mod lama dan buat baru
           rm -f go.mod go.sum
-          go mod init wgengine
+          go mod init main 
           
-          # Ambil library Wireguard dan Mobile Bind
+          # Ambil dependensi untuk Wireguard dan Mobile Bind
           go get golang.zx2c4.com/wireguard@latest
           go get golang.org/x/mobile/bind@latest
           
@@ -42,12 +42,11 @@ jobs:
         run: |
           export PATH=$(go env GOPATH)/bin:$PATH
           
-          # PENTING: Kita memanggil 'wgengine', bukan titik ('.')
-          # Ini memaksa gomobile mengikuti aturan Go Modules
+          # PENTING: Target build adalah folder ./wgengine
           gomobile bind -v \
             -target=android \
             -androidapi 21 \
-            -o wgengine.aar wgengine
+            -o wgengine.aar ./wgengine
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
