@@ -12,46 +12,47 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25' # Harus 1.25 agar mendukung library mobile terbaru
+          go-version: '1.25' # Harus 1.25 untuk mendukung fitur 'iter'
           cache: false
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install gomobile (latest stable)
+      - name: Install Gomobile Tools
         run: |
-          # Gunakan versi terbaru agar tidak error 'iter' atau 'unrecognized import'
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           
           export PATH=$(go env GOPATH)/bin:$PATH
           gomobile init
 
-      - name: Prepare Dependencies
+      - name: Prepare Workspace & Vendor
         run: |
-          # Bersihkan cache modul yang rusak
-          go clean -modcache
-          
-          # Hapus dan buat ulang go.mod agar sinkron dengan Go 1.25
+          # Bersihkan total file lama agar tidak bentrok versi
           rm -f go.mod go.sum
+          
           go mod init wgengine
           
-          # Ambil library Wireguard dan Mobile terbaru
+          # Ambil library terbaru
           go get golang.zx2c4.com/wireguard@latest
           go get golang.org/x/mobile/bind@latest
           
+          # Trik Utama: Download source ke folder vendor
           go mod tidy
-          # Gunakan vendor agar gomobile pasti menemukan package bind
           go mod vendor
+          
+          # Tambahan: Pastikan folder bind benar-benar ada di vendor
+          ls -d vendor/golang.org/x/mobile/bind || echo "Warning: Bind not in vendor"
 
       - name: Build AAR
         run: |
           export PATH=$(go env GOPATH)/bin:$PATH
-
-          # Gunakan -mod=vendor agar gomobile menggunakan folder vendor lokal
+          
+          # Gunakan -mod=vendor agar tidak mencari ke cache global yang sering error
           gomobile bind -v \
             -target=android \
             -androidapi 21 \
+            -mod=vendor \
             -o wgengine.aar .
 
       - name: Upload Artifact
