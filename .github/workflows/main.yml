@@ -11,7 +11,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23' # Update ke versi terbaru untuk mendukung library x/mobile
+          go-version: '1.25' # Menggunakan versi Go terbaru
           cache: true
 
       - name: Install Gomobile Tools
@@ -20,16 +20,28 @@ jobs:
           go install golang.org/x/mobile/cmd/gobind@latest
           gomobile init
 
-      - name: Fetch Dependencies
+      - name: Auto-Generate Dependencies
         run: |
+          # Bersihkan file lama agar tidak konflik versi
+          rm -f go.mod go.sum
+          
+          # Inisialisasi module baru dengan Go 1.25
+          go mod init wgengine
+          
+          # Ambil library terbaru dengan flag -u (update)
+          go get -u golang.zx2c4.com/wireguard
+          go get -u golang.org/x/mobile/bind
+          
+          # Rapikan dependensi
           go mod tidy
-          go mod download
 
       - name: Build AAR
         run: |
-          # Tambahkan binary go ke PATH
+          # Pastikan binary go/bin masuk dalam PATH
           export PATH=$PATH:$(go env GOPATH)/bin
-          # Build target arm & arm64
+          
+          # Build untuk Redmi 10A (arm) dan HP modern (arm64)
+          # Flag -androidapi 21 memastikan kompatibilitas luas
           gomobile bind -v -target=android/arm,android/arm64 -androidapi 21 -o wgengine.aar .
 
       - name: Upload Artifact
