@@ -12,31 +12,27 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
-          cache: false
 
-      - name: Install Gomobile tools
+      - name: Setup Environment & Tools
         run: |
+          # Install tools ke path yang benar
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           gomobile init
+          
+          # Tambahkan binary ke PATH
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
-      - name: Prepare Dependencies
+      - name: Build with GOPATH Mode
         run: |
-          if [ ! -f go.mod ]; then
-            go mod init wgengine
-          fi
-          # Ambil semua dependency yang dibutuhkan
-          go get golang.org/x/mobile/bind
-          go get golang.zx2c4.com/wireguard
-          go mod tidy
-          # Trik Utama: Masukkan semua library ke folder 'vendor'
-          go mod vendor
-
-      - name: Build AAR
-        run: |
-          export PATH=$PATH:$(go env GOPATH)/bin
-          # Tambahkan flag -v agar kita bisa melihat progress detail
-          # Kita gunakan titik (.) untuk menandai build dari folder saat ini
+          # Matikan mode module agar gomobile tidak bingung mencari go.mod
+          export GO111MODULE=off
+          
+          # Download package ke GOPATH secara manual
+          go get -d golang.org/x/mobile/bind
+          go get -d golang.zx2c4.com/wireguard
+          
+          # Jalankan bind
           gomobile bind -v -target=android/arm,android/arm64 -androidapi 21 -o wgengine.aar .
 
       - name: Upload Artifact
