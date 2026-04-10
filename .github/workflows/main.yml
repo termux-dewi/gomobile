@@ -26,31 +26,28 @@ jobs:
           export PATH=$(go env GOPATH)/bin:$PATH
           gomobile init
 
-      - name: Prepare Workspace & Vendor
+      - name: Prepare Workspace
         run: |
+          # Hapus file lama dan inisialisasi ulang
           rm -f go.mod go.sum
           go mod init wgengine
           
-          # Ambil library terbaru
+          # Ambil library Wireguard dan Mobile Bind
           go get golang.zx2c4.com/wireguard@latest
           go get golang.org/x/mobile/bind@latest
           
           go mod tidy
-          # Membuat folder vendor secara lokal
-          go mod vendor
 
       - name: Build AAR
         run: |
           export PATH=$(go env GOPATH)/bin:$PATH
           
-          # TRICK: Gunakan GOFLAGS untuk memaksa mode vendor di dalam gomobile
-          export GOFLAGS="-mod=vendor"
-          
-          # Hapus flag -mod dari perintah gomobile bind
+          # PENTING: Kita memanggil 'wgengine', bukan titik ('.')
+          # Ini memaksa gomobile mengikuti aturan Go Modules
           gomobile bind -v \
             -target=android \
             -androidapi 21 \
-            -o wgengine.aar .
+            -o wgengine.aar wgengine
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
