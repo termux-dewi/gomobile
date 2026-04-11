@@ -1,56 +1,49 @@
-name: Build WG Engine
-on: [push]
+name: Build WireGuard gRPC AAR
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: # Supaya bisa build manual dari web GitHub
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23' # Versi stabil untuk gomobile
-          cache: false
+          go-version: '1.21' # Versi stabil untuk gomobile
 
-      - name: Setup Android SDK
+      - name: Setup Android NDK
         uses: android-actions/setup-android@v3
+        # GitHub Runner sudah punya NDK, kita tinggal panggil r26b/d
 
-      - name: Install Gomobile Tools
+      - name: Install Gomobile
         run: |
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
-          gomobile init
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
-      - name: Sync Dependencies & Vendor
-        run: |
-          # Hapus go.mod lama jika ada
-          rm -f go.mod go.sum
-          
-          # Inisialisasi modul di root
-          go mod init main
-          
-          # Tarik library yang Anda gunakan di engine.go
-          go get golang.zx2c4.com/wireguard@latest
-          go get golang.org/x/mobile/bind@latest
-          
-          # Masukkan semua library ke folder 'vendor'
-          # Ini adalah solusi mutlak untuk error 'unable to import bind'
-          go mod tidy
-          go mod vendor
+      - name: Initialize Gomobile
+        run: gomobile init
 
-      - name: Build AAR
+      - name: Go Mod Tidy
         run: |
-          # Gunakan path folder ./wgengine
-          # Tambahkan flag -v untuk melihat proses kompilasi Java
-          gomobile bind -v \
-            -target=android \
-            -androidapi 21 \
-            -o wgengine.aar ./wgengine
+          go mod init vpnengine || true
+          go mod tidy
+
+      - name: Build Fat AAR (ARM & ARM64)
+        run: |
+          # Perintah Ubuntu Full Command
+          export ANDROID_NDK_HOME=$ANDROID_HOME/ndk-bundle
+          gomobile bind -target android/arm,android/arm64 -androidapi 21 -v -o vpnengine.aar .
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wgengine-aar
-          path: wgengine.aar
+          name: vpnengine-aar
+          path: vpnengine.aar
