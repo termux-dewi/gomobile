@@ -16,7 +16,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.25' # Upgrade ke versi 1.25 sesuai kebutuhan library terbaru
           cache: true
 
       - name: Setup Java
@@ -28,43 +28,40 @@ jobs:
       - name: Setup Android NDK
         id: setup-ndk
         run: |
-          # Cari NDK terbaru secara dinamis
           NDK_PATH=$(ls -d $ANDROID_SDK_ROOT/ndk/* | tail -1)
           echo "NDK_PATH=$NDK_PATH" >> $GITHUB_ENV
-          echo "Using NDK at $NDK_PATH"
 
-      - name: Install Tools & Dependencies
+      - name: Initialize Go Module First
         run: |
-          # Install gomobile & gobind
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          go install golang.org/x/mobile/cmd/gobind@latest
-          
-          # Force download mobile bind package ke cache
-          go get golang.org/x/mobile/bind
-          
-          # Daftarkan binary ke PATH
-          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-
-      - name: Prepare Go Module
-        run: |
-          # Reset module agar bersih dari path lokal
+          # Buat module di awal agar 'go get' diizinkan
           rm -f go.mod go.sum
           go mod init vpnengine
           
-          # Ambil semua dependency yang dibutuhkan
+      - name: Install Tools & Dependencies
+        run: |
+          # Install binary tools
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          
+          # Daftarkan ke PATH
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+          
+          # Sekarang aman menjalankan go get karena sudah ada go.mod
+          go get golang.org/x/mobile/bind
           go get golang.zx2c4.com/wireguard
           go get google.golang.org/grpc
-          go get golang.org/x/mobile/bind
-          go mod tidy
           
-          # Inisialisasi gomobile (Wajib setelah go get bind)
+      - name: Build Preparation
+        run: |
+          go mod tidy
+          # Jalankan gomobile init dengan path lengkap
           $(go env GOPATH)/bin/gomobile init
 
       - name: Build Fat AAR (ARM & ARM64)
         run: |
           export ANDROID_NDK_HOME=${{ env.NDK_PATH }}
-          # Build menggunakan package mode (titik di akhir)
-          gomobile bind -target android/arm,android/arm64 -androidapi 21 -v -o vpnengine.aar .
+          # Pastikan package path benar (.)
+          $(go env GOPATH)/bin/gomobile bind -target android/arm,android/arm64 -androidapi 21 -v -o vpnengine.aar .
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
