@@ -16,7 +16,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.22' # Menggunakan versi terbaru yang stabil
+          check-latest: true
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -24,32 +25,43 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Install Gomobile
+      - name: Setup Android NDK
+        id: setup-ndk
         run: |
+          ANDROID_NDK_HOME=$(ls -d $ANDROID_SDK_ROOT/ndk/* | tail -1)
+          echo "NDK_PATH=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+          echo "NDK_BIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_ENV
+
+      - name: Install Gomobile Tools
+        run: |
+          # Instal binary gomobile dan gobind
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
-      - name: Setup Android NDK
-        id: setup-ndk
+      - name: Prepare Go Module and Dependencies
         run: |
-          # Mengambil versi NDK terbaru yang terinstall di runner
-          ANDROID_NDK_HOME=$(ls -d $ANDROID_SDK_ROOT/ndk/* | tail -1)
-          echo "NDK_PATH=$ANDROID_NDK_HOME" >> $GITHUB_ENV
-          echo "Menggunakan NDK di: $ANDROID_NDK_HOME"
-
-      - name: Initialize Gomobile
-        run: gomobile init
-
-      - name: Go Mod Tidy
-        run: |
-          go mod init vpnengine || true
+          # Bersihkan dan init ulang module
+          rm -f go.mod go.sum
+          go mod init vpnengine
+          
+          # Download source code yang dibutuhkan gomobile bind
+          go get golang.org/x/mobile/bind
+          go get golang.zx2c4.com/wireguard
+          go get google.golang.org/grpc
+          go get golang.org/x/net/context
+          
           go mod tidy
+          
+          # Inisialisasi gomobile setelah PATH terdaftar
+          $(go env GOPATH)/bin/gomobile init
 
       - name: Build Fat AAR (ARM & ARM64)
         run: |
-          # Gunakan variabel NDK_PATH yang sudah kita cari tadi
           export ANDROID_NDK_HOME=${{ env.NDK_PATH }}
+          export PATH=$PATH:${{ env.NDK_BIN }}
+          
+          # Perintah bind utama
           gomobile bind -target android/arm,android/arm64 -androidapi 21 -v -o vpnengine.aar .
 
       - name: Upload Artifact
