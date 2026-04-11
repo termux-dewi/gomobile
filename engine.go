@@ -1,27 +1,60 @@
-package wgengine
+package vpnengine
 
 import (
-	"golang.zx2c4.com/wireguard/conn"
+	"crypto/rand"
+	"encoding/base64"
+	"net"
 	"golang.zx2c4.com/wireguard/device"
-	"golang.zx2c4.com/wireguard/tun"
+	"golang.zx2c4.com/wireguard/tun/netstack"
 )
 
-func StartServer(fd int, privateKey string, clientPubKey string) {
-	tunDev, _, err := tun.CreateTUNFromFile(uintptr(fd), 1420)
+var wgDev *device.Device
+
+// GenerateKey untuk tombol refresh di UI Sketchware
+func GenerateKey() string {
+	k := make([]byte, 32)
+	rand.Read(k)
+	return base64.StdEncoding.EncodeToString(k)
+}
+
+// StartClient menghubungkan ke Cloudflare Tunnel via gRPC
+func StartClient(domain string, privKey string, peerPub string, clientIP string) string {
+	tun, _, err := netstack.CreateNetTUN(
+		[]net.IP{net.ParseIP(clientIP)},
+		[]net.IP{net.ParseIP("1.1.1.1")},
+		1280,
+	)
 	if err != nil {
-		return
+		return "ERROR: " + err.Error()
 	}
 
-	logger := device.NewLogger(device.LogLevelVerbose, "[WG-MOBILE]")
-	dev := device.NewDevice(tunDev, conn.NewDefaultBind(), logger)
+	wgDev = device.NewDevice(tun, device.NewLogger(device.LogLevelSilent, ""))
+	// Endpoint diarahkan ke bridge internal
+	config := "private_key=" + privKey + "\n" +
+		"public_key=" + peerPub + "\n" +
+		"endpoint=127.0.0.1:10000\n" +
+		"allowed_ip=0.0.0.0/0\n"
 
-	// Konfigurasi dinamis
-	config := "private_key=" + privateKey + "\n" +
-		"listen_port=51820\n" +
-		"replace_peers=true\n" +
-		"public_key=" + clientPubKey + "\n" +
-		"allowed_ip=10.0.0.2/32"
+	wgDev.IpcSet(config)
+	wgDev.Up()
+	return "CONNECTED"
+}
 
-	dev.IpcSet(config)
-	dev.Up()
+// StartServer mode standby menerima traffic gRPC
+func StartServer(privKey string, port string) string {
+	tun, _, _ := netstack.CreateNetTUN(
+		[]net.IP{net.ParseIP("10.0.0.1")},
+		[]net.IP{net.ParseIP("1.1.1.1")},
+		1280,
+	)
+	wgDev = device.NewDevice(tun, device.NewLogger(device.LogLevelSilent, ""))
+	wgDev.IpcSet("private_key=" + privKey + "\nlisten_port=" + port)
+	wgDev.Up()
+	return "SERVER_READY"
+}
+
+func Stop() {
+	if wgDev != nil {
+		wgDev.Close()
+	}
 }
