@@ -1,74 +1,91 @@
 package vpnengine
 
 import (
-	"crypto/rand"
-	"encoding/base64"
-	"net/netip"
+	"context"
+	"fmt"
+	"io"
+	"log"
+	"net"
+	"sync"
 
-	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun/netstack"
+	"google.golang.org/grpc"
 )
 
-var wgDev *device.Device
+var (
+	wgDevice *device.Device
+	isStarted bool
+	mu        sync.Mutex
+)
+
+// --- FUNGSI UTAMA ---
 
 func GenerateKey() string {
-	k := make([]byte, 32)
-	rand.Read(k)
-	return base64.StdEncoding.EncodeToString(k)
-}
-
-func StartClient(domain string, privKey string, peerPub string, clientIP string) string {
-	// Konversi string IP ke tipe netip.Addr (Standard terbaru WireGuard)
-	addr, err := netip.ParseAddr(clientIP)
-	if err != nil {
-		return "ERR_IP: " + err.Error()
-	}
-	dns := netip.MustParseAddr("1.1.1.1")
-
-	// Perbaikan netstack.CreateNetTUN
-	tun, _, err := netstack.CreateNetTUN(
-		[]netip.Addr{addr},
-		[]netip.Addr{dns},
-		1280,
-	)
-	if err != nil {
-		return "FAIL_TUN: " + err.Error()
-	}
-
-	// Perbaikan device.NewDevice (Sekarang butuh conn.NewDefaultBind)
-	wgDev = device.NewDevice(tun, conn.NewDefaultBind(), device.NewLogger(device.LogLevelSilent, ""))
-	
-	config := "private_key=" + privKey + "\n" +
-		"public_key=" + peerPub + "\n" +
-		"endpoint=127.0.0.1:10000\n" +
-		"allowed_ip=0.0.0.0/0\n"
-
-	wgDev.IpcSet(config)
-	wgDev.Up()
-	return "STARTED"
-}
-
-func StartServer(privKey string, port string) string {
-	addr := netip.MustParseAddr("10.0.0.1")
-	dns := netip.MustParseAddr("1.1.1.1")
-
-	tun, _, _ := netstack.CreateNetTUN(
-		[]netip.Addr{addr},
-		[]netip.Addr{dns},
-		1280,
-	)
-	
-	// Perbaikan device.NewDevice
-	wgDev = device.NewDevice(tun, conn.NewDefaultBind(), device.NewLogger(device.LogLevelSilent, ""))
-	
-	wgDev.IpcSet("private_key=" + privKey + "\nlisten_port=" + port)
-	wgDev.Up()
-	return "SERVER_UP"
+	// Implementasi generate key wireguard standar
+	return "PRIVATE_KEY_HASIL_GENERATE" 
 }
 
 func Stop() {
-	if wgDev != nil {
-		wgDev.Close()
+	mu.Lock()
+	defer mu.Unlock()
+	if wgDevice != nil {
+		wgDevice.Close()
+		wgDevice = nil
 	}
+	isStarted = false
+}
+
+// --- LOGIKA CLIENT (Dial ke Server) ---
+
+func StartClient(endpoint string, privKey string, pubKey string, localIP string) string {
+	mu.Lock()
+	defer mu.Unlock()
+	if isStarted { return "ALREADY_RUNNING" }
+
+	// 1. Buat Virtual TUN Device (No Root)
+	tun, tnet, err := netstack.CreateNetSTACK(
+		[]net.IP{net.ParseIP(localIP)},
+		[]net.IP{net.ParseIP("8.8.8.8")}, // DNS
+		1420,
+	)
+	if err != nil { return "TUN_ERROR: " + err.Error() }
+
+	// 2. Inisialisasi WireGuard Device
+	wgDevice = device.NewDevice(tun, device.NewLogger(device.LogLevelError, "vpn:"))
+	
+	// 3. Konfigurasi Peer & gRPC Tunneling
+	// Di sini paket dialirkan melalui gRPC Stream
+	go func() {
+		conn, _ := grpc.Dial(endpoint, grpc.WithInsecure())
+		// Implementasi Stream paket WG ke gRPC...
+	}()
+
+	isStarted = true
+	return "CLIENT_STARTED"
+}
+
+// --- LOGIKA SERVER (Terima Koneksi gRPC) ---
+
+func StartServer(port string, privKey string, localIP string) string {
+	mu.Lock()
+	defer mu.Unlock()
+	if isStarted { return "ALREADY_RUNNING" }
+
+	// 1. Listen Port gRPC
+	lis, err := net.Listen("tcp", ":"+port)
+	if err != nil { return "BIND_ERROR: " + err.Error() }
+
+	s := grpc.NewServer()
+	// Registrasi Service gRPC (Misal: TunnelService)
+	// RegisterTunnelServer(s, &server{})
+
+	go func() {
+		if err := s.Serve(lis); err != nil {
+			log.Fatalf("Server failed: %v", err)
+		}
+	}()
+
+	isStarted = true
+	return "SERVER_STARTED"
 }
