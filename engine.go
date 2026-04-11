@@ -1,29 +1,26 @@
 package vpnengine
 
 import (
-	"context"
-	"fmt"
-	"io"
 	"log"
 	"net"
 	"sync"
 
+	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
+	"golang.zx2c4.com/wireguard/tun"
 	"golang.zx2c4.com/wireguard/tun/netstack"
 	"google.golang.org/grpc"
 )
 
 var (
-	wgDevice *device.Device
+	wgDevice  *device.Device
 	isStarted bool
 	mu        sync.Mutex
 )
 
-// --- FUNGSI UTAMA ---
-
 func GenerateKey() string {
-	// Implementasi generate key wireguard standar
-	return "PRIVATE_KEY_HASIL_GENERATE" 
+	// Implementasi dummy untuk testing
+	return "PRIVATE_KEY_SAMPEL"
 }
 
 func Stop() {
@@ -34,55 +31,54 @@ func Stop() {
 		wgDevice = nil
 	}
 	isStarted = false
+	log.Println("VPN Stopped")
 }
 
-// --- LOGIKA CLIENT (Dial ke Server) ---
-
+// StartClient - Mode Client
 func StartClient(endpoint string, privKey string, pubKey string, localIP string) string {
 	mu.Lock()
 	defer mu.Unlock()
-	if isStarted { return "ALREADY_RUNNING" }
+	if isStarted {
+		return "ALREADY_RUNNING"
+	}
 
-	// 1. Buat Virtual TUN Device (No Root)
-	tun, tnet, err := netstack.CreateNetSTACK(
+	// Perbaikan: netstack.CreateNetStack (S kapital di Stack)
+	tunDev, _, err := netstack.CreateNetStack(
 		[]net.IP{net.ParseIP(localIP)},
-		[]net.IP{net.ParseIP("8.8.8.8")}, // DNS
+		[]net.IP{net.ParseIP("8.8.8.8")},
 		1420,
 	)
-	if err != nil { return "TUN_ERROR: " + err.Error() }
+	if err != nil {
+		return "TUN_ERROR: " + err.Error()
+	}
 
-	// 2. Inisialisasi WireGuard Device
-	wgDevice = device.NewDevice(tun, device.NewLogger(device.LogLevelError, "vpn:"))
-	
-	// 3. Konfigurasi Peer & gRPC Tunneling
-	// Di sini paket dialirkan melalui gRPC Stream
-	go func() {
-		conn, _ := grpc.Dial(endpoint, grpc.WithInsecure())
-		// Implementasi Stream paket WG ke gRPC...
-	}()
+	// Perbaikan: NewDevice butuh 3 argumen (tun, bind, logger)
+	logger := device.NewLogger(device.LogLevelError, "vpn:")
+	wgDevice = device.NewDevice(tunDev, conn.NewDefaultBind(), logger)
 
 	isStarted = true
 	return "CLIENT_STARTED"
 }
 
-// --- LOGIKA SERVER (Terima Koneksi gRPC) ---
-
+// StartServer - Mode Server
 func StartServer(port string, privKey string, localIP string) string {
 	mu.Lock()
 	defer mu.Unlock()
-	if isStarted { return "ALREADY_RUNNING" }
+	if isStarted {
+		return "ALREADY_RUNNING"
+	}
 
-	// 1. Listen Port gRPC
 	lis, err := net.Listen("tcp", ":"+port)
-	if err != nil { return "BIND_ERROR: " + err.Error() }
+	if err != nil {
+		return "BIND_ERROR: " + err.Error()
+	}
 
 	s := grpc.NewServer()
-	// Registrasi Service gRPC (Misal: TunnelService)
-	// RegisterTunnelServer(s, &server{})
+	// Di sini nanti register service gRPC kamu
 
 	go func() {
 		if err := s.Serve(lis); err != nil {
-			log.Fatalf("Server failed: %v", err)
+			log.Printf("Server failed: %v", err)
 		}
 	}()
 
