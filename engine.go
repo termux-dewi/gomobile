@@ -3,33 +3,42 @@ package vpnengine
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"net"
+	"net/netip"
+
+	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun/netstack"
 )
 
 var wgDev *device.Device
 
-// GenerateKey untuk tombol refresh di UI Sketchware
 func GenerateKey() string {
 	k := make([]byte, 32)
 	rand.Read(k)
 	return base64.StdEncoding.EncodeToString(k)
 }
 
-// StartClient menghubungkan ke Cloudflare Tunnel via gRPC
 func StartClient(domain string, privKey string, peerPub string, clientIP string) string {
+	// Konversi string IP ke tipe netip.Addr (Standard terbaru WireGuard)
+	addr, err := netip.ParseAddr(clientIP)
+	if err != nil {
+		return "ERR_IP: " + err.Error()
+	}
+	dns := netip.MustParseAddr("1.1.1.1")
+
+	// Perbaikan netstack.CreateNetTUN
 	tun, _, err := netstack.CreateNetTUN(
-		[]net.IP{net.ParseIP(clientIP)},
-		[]net.IP{net.ParseIP("1.1.1.1")},
+		[]netip.Addr{addr},
+		[]netip.Addr{dns},
 		1280,
 	)
 	if err != nil {
-		return "ERROR: " + err.Error()
+		return "FAIL_TUN: " + err.Error()
 	}
 
-	wgDev = device.NewDevice(tun, device.NewLogger(device.LogLevelSilent, ""))
-	// Endpoint diarahkan ke bridge internal
+	// Perbaikan device.NewDevice (Sekarang butuh conn.NewDefaultBind)
+	wgDev = device.NewDevice(tun, conn.NewDefaultBind(), device.NewLogger(device.LogLevelSilent, ""))
+	
 	config := "private_key=" + privKey + "\n" +
 		"public_key=" + peerPub + "\n" +
 		"endpoint=127.0.0.1:10000\n" +
@@ -37,20 +46,25 @@ func StartClient(domain string, privKey string, peerPub string, clientIP string)
 
 	wgDev.IpcSet(config)
 	wgDev.Up()
-	return "CONNECTED"
+	return "STARTED"
 }
 
-// StartServer mode standby menerima traffic gRPC
 func StartServer(privKey string, port string) string {
+	addr := netip.MustParseAddr("10.0.0.1")
+	dns := netip.MustParseAddr("1.1.1.1")
+
 	tun, _, _ := netstack.CreateNetTUN(
-		[]net.IP{net.ParseIP("10.0.0.1")},
-		[]net.IP{net.ParseIP("1.1.1.1")},
+		[]netip.Addr{addr},
+		[]netip.Addr{dns},
 		1280,
 	)
-	wgDev = device.NewDevice(tun, device.NewLogger(device.LogLevelSilent, ""))
+	
+	// Perbaikan device.NewDevice
+	wgDev = device.NewDevice(tun, conn.NewDefaultBind(), device.NewLogger(device.LogLevelSilent, ""))
+	
 	wgDev.IpcSet("private_key=" + privKey + "\nlisten_port=" + port)
 	wgDev.Up()
-	return "SERVER_READY"
+	return "SERVER_UP"
 }
 
 func Stop() {
