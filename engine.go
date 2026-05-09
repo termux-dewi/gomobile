@@ -1,46 +1,23 @@
-package vpnengine
+package vpnbridge
 
 import (
-	"net/netip"
-	"strconv"
-
-	"golang.zx2c4.com/wireguard/conn"
-	"golang.zx2c4.com/wireguard/device"
-	"golang.zx2c4.com/wireguard/tun/netstack"
+	"github.com/xjasonlyu/tun2socks/v2/engine"
 )
 
-// StartServer menjalankan WireGuard server di userspace via gVisor netstack
-func StartServer(privateKey string, listenPort int, localAddress string) {
-	// Konversi string IP ke netip.Addr (API terbaru mewajibkan netip)
-	addr, err := netip.ParseAddr(localAddress)
-	if err != nil {
-		return
+func StartEngine(socksAddr string, tunName string, mtu int) error {
+	config := &engine.Key{
+		Proxy:                "socks5://" + socksAddr,
+		Device:               tunName,
+		LogLevel:             "info",
+		MTU:                  mtu,
+		UDPTimeout:           60000,
+		Sniffing:             true,
+		AllowSecondaryRoute:  true,
 	}
 
-	// CreateNetTUN membutuhkan []netip.Addr
-	tun, tnet, err := netstack.CreateNetTUN(
-		[]netip.Addr{addr},
-		[]netip.Addr{netip.MustParseAddr("8.8.8.8")},
-		1420)
-	
-	if err != nil {
-		return
-	}
+	return engine.Insert(config)
+}
 
-	// tnet harus digunakan untuk routing atau minimal di-ignore
-	_ = tnet 
-
-	// Device baru sekarang butuh 3 argumen: TUN, Bind, dan Logger
-	dev := device.NewDevice(
-		tun, 
-		conn.NewDefaultBind(), 
-		device.NewLogger(device.LogLevelError, "wg-go: "),
-	)
-
-	// Inisialisasi konfigurasi
-	config := "private_key=" + privateKey + "\nlisten_port=" + strconv.Itoa(listenPort)
-	dev.IpcSet(config)
-	
-	// Jalankan interface
-	dev.Up()
+func StopEngine() {
+	engine.Stop()
 }
